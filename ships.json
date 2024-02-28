@@ -4,6 +4,7 @@
   "ais_interval": 10,
   "noise_factor": 1,
   "tcp_port": 6000,
+  "nmea_filter": ["RMC","VHW","DBT","MWV"],
   "ships": [
     {
       "position": [
