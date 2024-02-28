@@ -12,6 +12,7 @@ from random import gauss
 from time import monotonic
 from time import sleep
 
+# pip install numpy scipy pyais
 import numpy
 import pyais
 import scipy
