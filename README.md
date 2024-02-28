@@ -12,3 +12,7 @@ The script listens on port 6000/TCP and serves NMEA sentences containing data as
 It also accepts RMB/APB sentences on the same TCP connection and will steer the supplied bearing.
 
 It also send AIS data to simulate other ship that appear as AIS targets on the plotter.
+
+AvNav with simulated data
+
+![avnav example](avnav.png)
