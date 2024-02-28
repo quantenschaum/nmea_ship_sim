@@ -1,6 +1,6 @@
 # Simple NMEA ship simulator
 
-This is a simple NMEA based ship simulator used to generated test data AvNav, SignalK, OpenCPN, ... It can be used for testing or showcasing these applications.
+This is a simple NMEA based ship simulator used to generate test data AvNav, SignalK, OpenCPN, ... It can be used for testing or showcasing these applications.
 
 It simulates a ship by tracking its state (position, heading, speed, ...)
 and the state of the environment (wind, current, depth) and integrating its motion over time.
