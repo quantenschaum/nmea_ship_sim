@@ -1,10 +1,4 @@
 {
-  "time_factor": 1,
-  "send_interval": 1,
-  "ais_interval": 10,
-  "noise_factor": 1,
-  "tcp_port": 6000,
-  "nmea_filter": ["RMC","VHW","DBT","MWV"],
   "ships": [
     {
       "position": [
@@ -13,7 +7,7 @@
       ],
       "heading_true": 355,
       "speed_thr_water": 5,
-      "sailing": 0,
+      "sailing": 1,
       "rate_of_turn": 0.0,
       "mag_variation": 4.7,
       "rudder_angle": 0,
@@ -23,7 +17,7 @@
       "wind_dir_ground": 30,
       "current_set": 280,
       "current_drift": 1,
-      "leeway_factor": 0,
+      "leeway_factor": 10,
       "mmsi": 123456789,
       "imo": 0,
       "name": "OWN SHIP",

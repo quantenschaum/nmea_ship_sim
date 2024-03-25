@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import builtins
 import json
 import re
 import select
@@ -24,36 +24,41 @@ NOISE_FACTOR = 1  # scale measurement noise
 AUTO_PILOT = 1  # enable autopilot, set to 2 to steer to optimal VMC
 POS_JSON = "position.json"  # read+write position and heading to this file if it exists
 # NMEA sentences with are sent to clients
-NMEA_FILTER = [
-  "RMC",
-  # "GGA",
-  # "ZDA",
-  # "GLL",
-  # "VTG",
-  # "HDG",
-  "VHW",
-  "DBT",
-  # "DBS",
-  # "MWD",
-  "MWV",
-  # "ROT",
-  # "RSA",
-  # "RPM",
-  # "VDR",
-]
+NMEA_FILTER = "RMC,VHW,DBT,MWV,XDR"
 
 start = monotonic()
 
+print = builtins.print
+
 
 def main():
-  global TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER
-  config = read("ships.json")
-  TIME_FACTOR = config.get("time_factor", TIME_FACTOR)
-  SEND_INTERVAL = config.get("send_interval", SEND_INTERVAL)
-  AIS_INTERVAL = config.get("ais_interval", AIS_INTERVAL)
-  NOISE_FACTOR = config.get("noise_factor", NOISE_FACTOR)
-  NMEA_FILTER = config.get("nmea_filter", NMEA_FILTER)
+  config = read("ship_sim.json")
+  kwargs = {}
+  kwargs["time_factor"] = config.get("time_factor", TIME_FACTOR)
+  kwargs["send_interval"] = config.get("send_interval", SEND_INTERVAL)
+  kwargs["ais_interval"] = config.get("ais_interval", AIS_INTERVAL)
+  kwargs["noise_factor"] = config.get("noise_factor", NOISE_FACTOR)
+  kwargs["nmea_filter"] = config.get("nmea_filter", NMEA_FILTER)
+
   tcp_port = config.get("tcp_port", 6000)
+  kwargs["server"] = Server("", tcp_port).serve
+
+  loop(config, **kwargs)
+
+
+def loop(config, **kwargs):
+  global TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER, print
+  TIME_FACTOR = kwargs.get("time_factor", TIME_FACTOR)
+  SEND_INTERVAL = kwargs.get("send_interval", SEND_INTERVAL)
+  AIS_INTERVAL = kwargs.get("ais_interval", AIS_INTERVAL)
+  NOISE_FACTOR = kwargs.get("noise_factor", NOISE_FACTOR)
+  NMEA_FILTER = kwargs.get("nmea_filter", NMEA_FILTER).replace("$", "").split(",")
+  stop = kwargs.get("stop", lambda: False)
+  server = kwargs["server"]
+
+  do_print = kwargs.get("print", True)
+  if not do_print:
+    print = lambda *a, **kw: None
 
   polar = Polar(config["polar"])
   heel = Polar(config["heel"])
@@ -85,10 +90,8 @@ def main():
 
     return sentences
 
-  server = Server("", tcp_port, nmea, own.autopilot)
-
   t0 = monotonic()
-  while True:
+  while not stop():
     t1 = monotonic()
     for s in ships:
       s.current_set = own.current_set
@@ -100,7 +103,7 @@ def main():
       print(own)
       if isfile(POS_JSON):
         write(POS_JSON, [own.position, own.heading_true])
-      server.serve()
+      server(nmea(), own.autopilot)
       t0 = t1
     sleep(1 / TIME_FACTOR)
 
@@ -282,6 +285,7 @@ class Ship:
       f"RIRSA,{self.rudder_angle:.1f},A,,",
       f"ERRPM,E,1,{noisy(self.engine_rpm):.1f},,A",
       f"CCVDR,{self.current_set:.1f},T,,,{self.current_drift:.1f},N",
+      f"HCXDR,A,{self.heel_angle:.0f},D,ROLL"
     ]
 
     sentences = [
@@ -303,14 +307,14 @@ class Ship:
       max_xte = 1
       big_xte = abs(xte) > max_xte
       if AUTO_PILOT == 2 and 15 < abs(brg_twd) < 170 and not big_xte:
-        cts = self.polar.vmc_angle(
+        cts = self._polar.vmc_angle(
           self.wind_dir_true, self.wind_speed_true, brg
         )
         self.sign = 0
         msg = "OPTVMC"
       else:
-        min_twa = self.polar.angle(self.wind_speed_true, True)
-        max_twa = self.polar.angle(self.wind_speed_true, False)
+        min_twa = self._polar.angle(self.wind_speed_true, True)
+        max_twa = self._polar.angle(self.wind_speed_true, False)
         if abs(brg_twd) < min_twa:  # too high upwind
           if not self.sign or big_xte:
             self.sign = copysign(1, xte if big_xte else brg_twd)
@@ -367,9 +371,9 @@ class Polar:
 
 
 class Server:
-  def __init__(self, addr, port, send, receive):
-    self.send = send
-    self.receive = receive
+  def __init__(self, addr, port):
+    # self.send = send
+    # self.receive = receive
     if socket.has_dualstack_ipv6():
       self.server = socket.create_server(
         (addr, port), family=socket.AF_INET6, dualstack_ipv6=True
@@ -379,7 +383,7 @@ class Server:
 
     self.conns = []
 
-  def serve(self):
+  def serve(self, data_to_send, received):
     try:
       rx, tx, er = select.select([self.server], [], [self.server], 0)
       # print("server", rx, tx, er)
@@ -396,12 +400,12 @@ class Server:
       # print("connections", rx, tx, er)
 
       if tx:
-        data = self.send()
-        print(data, file=sys.stderr)
+        # data = self.send()
+        print(data_to_send, file=sys.stderr)
         for co in tx:
           try:
             # print("TX", co)
-            co.send(data.encode())
+            co.send(data_to_send.encode())
             # print(data, file=sys.stderr)
           except Exception as x:
             print(x, co, file=sys.stderr)
@@ -413,17 +417,21 @@ class Server:
           data = co.recv(4096).decode()
           if data:
             print(data, file=sys.stderr)
-            self.receive(data)
+            # self.receive(data)
+            received(data)
         except Exception as x:
           print(x, co, file=sys.stderr)
+          sleep(3)
           self.conns.remove(co)
 
       for co in er:
         print("ERROR", co, file=sys.stderr)
+        sleep(3)
         self.conns.remove(co)
 
     except Exception as x:
       print(x, file=sys.stderr)
+      sleep(3)
 
 
 def to360(a):
