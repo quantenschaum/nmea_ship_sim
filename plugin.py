@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+from time import monotonic
 
 from avnav_api import AVNApi
 
@@ -14,6 +15,7 @@ SEND_INTERVAL = "send_interval"
 AIS_INTERVAL = "ais_interval"
 NOISE_FACTOR = "noise_factor"
 NMEA_FILTER = "nmea_filter"
+RESTART = "restart_time"
 
 NMEA_PRIORITY = "nmea_priority"
 CONFIG = [
@@ -52,6 +54,12 @@ CONFIG = [
     "description": "NMEA priority",
     "type": "NUMBER",
     "default": 50,
+  },
+  {
+    "name": RESTART,
+    "description": "time (s) after which the simulation is restarted (0=no restart)",
+    "type": "NUMBER",
+    "default": 0,
   },
 ]
 
@@ -135,22 +143,26 @@ class Plugin(object):
       rmb = self.get_rmb()
       if rmb:
         recv(rmb)
+      nmea = set()
       for l in data.splitlines():
+        # print("<",l)
+        nmea.add(l[:6])
         self.api.addNMEA(
           l,
           source=SOURCE,
           omitDecode=False,
           sourcePriority=self.config[NMEA_PRIORITY],
         )
-      self.api.setStatus('NMEA', 'sending data')
+      self.api.setStatus('NMEA', f'sending {sorted(nmea)}')
 
     while not self.api.shouldStopMainThread():
       try:
         self.config_changed = False
+        t0, r = monotonic(), self.config[RESTART] / self.config[TIME_FACTOR]
         kwargs = {k: self.config[k] for k in (TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER)}
         kwargs["server"] = serve
         kwargs["print"] = False
-        kwargs["stop"] = lambda: self.api.shouldStopMainThread() or self.config_changed
+        kwargs["stop"] = lambda: self.api.shouldStopMainThread() or self.config_changed or (r and monotonic() - t0 > r)
         ship_sim.loop(simconf, **kwargs)
       except Exception as x:
         self.api.setStatus("ERROR", f"{x}")
