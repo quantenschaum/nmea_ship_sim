@@ -16,6 +16,7 @@ AIS_INTERVAL = "ais_interval"
 NOISE_FACTOR = "noise_factor"
 NMEA_FILTER = "nmea_filter"
 RESTART = "restart_time"
+AP_MODE = "AP_mode"
 
 NMEA_PRIORITY = "nmea_priority"
 CONFIG = [
@@ -60,6 +61,12 @@ CONFIG = [
     "description": "time (s) after which the simulation is restarted (0=no restart)",
     "type": "NUMBER",
     "default": 0,
+  },
+  {
+    "name": AP_MODE,
+    "description": "autopilot mode: 0=off 1=HDT->BRG 2=HDT->opt. VMC course",
+    "type": "NUMBER",
+    "default": 1,
   },
 ]
 
@@ -159,7 +166,8 @@ class Plugin(object):
       try:
         self.config_changed = False
         t0, r = monotonic(), self.config[RESTART] / self.config[TIME_FACTOR]
-        kwargs = {k: self.config[k] for k in (TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER)}
+        kwargs = {k: self.config[k] for k in
+                  (TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER, AP_MODE)}
         kwargs["server"] = serve
         kwargs["print"] = False
         kwargs["stop"] = lambda: self.api.shouldStopMainThread() or self.config_changed or (r and monotonic() - t0 > r)

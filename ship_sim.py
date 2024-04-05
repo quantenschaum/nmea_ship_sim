@@ -21,7 +21,7 @@ TIME_FACTOR = 1  # speedup time
 SEND_INTERVAL = 1  # interval for sending NMEA data
 AIS_INTERVAL = 10  # interval (s) for emitting AIS sentences
 NOISE_FACTOR = 1  # scale measurement noise
-AUTO_PILOT = 1  # enable autopilot, set to 2 to steer to optimal VMC
+AUTO_PILOT = 2  # enable autopilot, set to 2 to steer to optimal VMC
 POS_JSON = "position.json"  # read+write position and heading to this file if it exists
 # NMEA sentences with are sent to clients
 NMEA_FILTER = "RMC,VHW,DBT,MWV,XDR"
@@ -34,11 +34,6 @@ print = builtins.print
 def main():
   config = read("ship_sim.json")
   kwargs = {}
-  kwargs["time_factor"] = config.get("time_factor", TIME_FACTOR)
-  kwargs["send_interval"] = config.get("send_interval", SEND_INTERVAL)
-  kwargs["ais_interval"] = config.get("ais_interval", AIS_INTERVAL)
-  kwargs["noise_factor"] = config.get("noise_factor", NOISE_FACTOR)
-  kwargs["nmea_filter"] = config.get("nmea_filter", NMEA_FILTER)
 
   tcp_port = config.get("tcp_port", 6000)
   kwargs["server"] = Server("", tcp_port).serve
@@ -275,6 +270,8 @@ class Ship:
       f"GPGLL,{latdeg:02.0f}{latmin:07.04f},{latsgn},{londeg:03.0f}{lonmin:07.04f},{lonsgn},{hhmmssss},A",
       f"GPVTG,{cog:.1f},T,,,{sog:.1f},N,,",
       f"HCHDG,{heading_cmp:.1f},{abs(magdev):.1f},{magdevdir},{abs(magvar):.1f},{magvardir}",
+      f"HCHDM,{heading_mag:.1f},M",
+      f"HCHDT,{heading:.1f},T",
       f"VWVHW,{heading:.1f},T,{heading_mag:.1f},M,{stw:.1f},N,,",
       f"SDDBT,,,{depth:.1f},M,,",  # below transducer
       f"SDDBS,,,{depth:.1f},M,,",  # below surface
@@ -307,9 +304,7 @@ class Ship:
       max_xte = 1
       big_xte = abs(xte) > max_xte
       if AUTO_PILOT == 2 and 15 < abs(brg_twd) < 170 and not big_xte:
-        cts = self._polar.vmc_angle(
-          self.wind_dir_true, self.wind_speed_true, brg
-        )
+        cts = self._polar.vmc_angle(self.wind_dir_true, self.wind_speed_true, brg)
         self.sign = 0
         msg = "OPTVMC"
       else:
