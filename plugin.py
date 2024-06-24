@@ -223,7 +223,7 @@ class Plugin(object):
                             else:
                                 dt = self.config[SEND_INTERVAL]
                             time.sleep(dt / self.config[TIME_FACTOR])
-                        if l[3:6] in nmea_filter:
+                        if l[3:6] in nmea_filter or not nmea_filter:
                             # print(l)
                             lines.append(l)
 
