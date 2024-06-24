@@ -22,7 +22,7 @@ SEND_INTERVAL = 1  # interval for sending NMEA data
 AIS_INTERVAL = 10  # interval (s) for emitting AIS sentences
 NOISE_FACTOR = 1  # scale measurement noise
 AUTO_PILOT = 2  # enable autopilot, set to 2 to steer to optimal VMC
-POS_JSON = "position.json"  # read+write position and heading to this file if it exists
+POS_JSON = "ship_pos.json"  # store position and heading in this file
 # NMEA sentences with are sent to clients
 NMEA_FILTER = "RMC,VHW,DBT,MWV,XDR"
 
