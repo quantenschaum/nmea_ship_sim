@@ -185,7 +185,8 @@ class Plugin(object):
             send_nmea(data.splitlines())
 
         def replay_nmea():
-            nmea_filter = self.config[NMEA_FILTER].replace("$", "").split(",")
+            nmea_filter = self.config[NMEA_FILTER].strip().replace("$", "").split(",")
+            nmea_filter = list(filter(lambda e:e,nmea_filter))
             replay = self.get_file(self.config[REPLAY_FILE])
             lines = []
             with open(replay) as f:
