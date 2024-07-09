@@ -242,7 +242,7 @@ class Ship:
     londeg, lonmin = divmod(abs(lon) * 60, 60)
     lonsgn = "W" if lon < 0 else "E"
     sog = noisy(self.speed_over_ground)
-    cog = noisy(self.course_over_ground, absolute=1)
+    cog = to360(noisy(self.course_over_ground, absolute=1))
     stw = noisy(self.speed_thr_water)
     altitude = noisy(3)
     rot = noisy(self.rate_of_turn * 60)
@@ -253,15 +253,15 @@ class Ship:
     magvar = self.mag_variation
     magvardir = "W" if magvar < 0 else "E"
 
-    heading = noisy(self.heading_true, absolute=1)
-    heading_mag = noisy(self.heading_mag, absolute=1)
-    heading_cmp = noisy(self.heading_cmp, absolute=1)
+    heading = to360(noisy(self.heading_true, absolute=1))
+    heading_mag = to360(noisy(self.heading_mag, absolute=1))
+    heading_cmp = to360(noisy(self.heading_cmp, absolute=1))
 
     wind_speed_true = noisy(self.wind_speed_true)
-    wind_dir_true = noisy(to360(self.wind_dir_true), absolute=1)
-    wind_angle_true = noisy(to360(self.wind_angle_true), absolute=1)
+    wind_dir_true = to360(noisy(to360(self.wind_dir_true), absolute=1))
+    wind_angle_true = to180(noisy(to360(self.wind_angle_true), absolute=1))
     wind_speed_app = noisy(self.wind_speed_app)
-    wind_angle_app = noisy(to360(self.wind_angle_app), absolute=1)
+    wind_angle_app = to180(noisy(to360(self.wind_angle_app), absolute=1))
 
     sentences = [
       f"GPRMC,{hhmmssss},A,{latdeg:02.0f}{latmin:06.3f},{latsgn},{londeg:03.0f}{lonmin:06.3f},{lonsgn},{sog:05.1f},{cog:05.1f},{ddmmyy},{abs(magvar):.1f},{magvardir}",
