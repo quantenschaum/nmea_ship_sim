@@ -192,7 +192,7 @@ class Ship:
     else:
       self.heel_angle, self.leeway = 0, 0
 
-    self.course_thr_water = self.heading_true + self.leeway
+    self.course_thr_water = to360(self.heading_true + self.leeway)
 
     self.course_over_ground, self.speed_over_ground = add_polar(
       (self.current_set, self.current_drift),
