@@ -178,9 +178,9 @@ class Ship:
       b = 0.05  # delayed change
       self.speed_thr_water += b * (stw - self.speed_thr_water)
 
-      self.heel_angle = self._pheel.value(
+      self.heel_angle = copysign(self._pheel.value(
         self.wind_angle_true, self.wind_speed_true
-      )
+      ),-self.wind_angle_true)
       self.leeway = (
         clamp(
           self.leeway_factor * self.heel_angle / self.speed_thr_water ** 2,
@@ -207,6 +207,9 @@ class Ship:
       (self.wind_dir_ground, self.wind_speed_ground),
     )
     self.wind_angle_app = to180(self.wind_dir_app - self.heading_true)
+
+    # self.wind_dir_ground=to360(noisy(self.wind_dir_ground,absolute=0.5))
+    # self.wind_speed_ground=max(5,min(20,noisy(self.wind_speed_ground,absolute=0.5)))
 
   def __str__(self):
     return "\n".join(
@@ -275,7 +278,7 @@ class Ship:
       f"VWVHW,{heading:.1f},T,{heading_mag:.1f},M,{stw:.1f},N,,",
       f"SDDBT,,,{depth:.1f},M,,",  # below transducer
       f"SDDBS,,,{depth:.1f},M,,",  # below surface
-      f"WIMWD,{wind_dir_true:.1f},T,,,{wind_speed_true:.1f},N,,",
+      # f"WIMWD,{wind_dir_true:.1f},T,,,{wind_speed_true:.1f},N,,",
       # f"WIMWV,{wind_angle_true:.1f},T,{wind_speed_true:.1f},N,A",
       f"WIMWV,{wind_angle_app:.1f},R,{wind_speed_app:.1f},N,A",
       f"HCROT,{rot:.1f},A",
@@ -510,7 +513,7 @@ def decode_nmea(data):
       # $GPRMB,A,1.70,L,8,9,5509.36,N,01335.04,E,7.8,261.9,5.7,V,A*51
       # $GPAPB,A,A,1.70,L,N,V,,274.5,T,9,261.9,T,261.9,T*4F
       m = re.match(
-        "\$..(APB|RMB)" + ",([^,]*)" * 13 + "(,([^,]*))?\*..",
+        r"\$..(APB|RMB)" + ",([^,]*)" * 13 + r"(,([^,]*))?\*..",
         l,
       )
       if m:
