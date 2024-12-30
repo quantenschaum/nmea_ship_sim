@@ -180,7 +180,7 @@ class Ship:
     self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
 
     self.current_drift = self.DFT*shift(t,{1/(12.5*3600):1}) # 12.5h period
-    self.current_set = to360(self.SET + (0 if self.current_drift>0 else 180))
+    self.current_set = to360(self.SET+shift(t,{1/(12.5*3600):20}) + (0 if self.current_drift>0 else 180))
     self.current_drift = abs(self.current_drift)
 
     self.wind_dir_true, self.wind_speed_true = add_polar(
