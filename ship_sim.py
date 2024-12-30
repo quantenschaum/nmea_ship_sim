@@ -6,7 +6,7 @@ import select
 import socket
 import sys
 from datetime import datetime, timedelta
-from math import sin, cos, radians, degrees, atan2, sqrt, copysign, isfinite, asin, nan
+from math import sin, cos, radians, degrees, atan2, sqrt, copysign, isfinite, asin, nan, pi
 from os.path import isfile
 from random import gauss
 from time import monotonic
@@ -131,6 +131,11 @@ class Ship:
 
   def __init__(self, **kwargs):
     self.load(kwargs)
+    self.t0=monotonic()
+    self.GWD=self.wind_dir_ground
+    self.GWS=self.wind_speed_ground
+    self.SET=self.current_set
+    self.DFT=self.current_drift
     self.time = datetime.utcnow()
     self.sign = 0  # used by autopilot
     self.ais_time_dynamic = 0  # used for tracking AIS interval
@@ -164,7 +169,19 @@ class Ship:
     self.mag_deviation = 3 * sin(radians(self.heading_mag + 52))
     self.heading_cmp = to360(self.heading_mag - self.mag_deviation)
 
+
+    def shift(t,coeff={}):
+      return sum(a*sin(2*pi*f*t) for f,a in coeff.items())
+
+    t = TIME_FACTOR*(monotonic()-self.t0)
+    self.wind_dir_ground = to360(self.GWD+shift(t,{1/600:10,1/333:6,1/123:3}))
+    self.wind_speed_ground = self.GWS+shift(t,{1/66:1,1/222:1.5,1/674:2})
+
     self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
+
+    self.current_drift = self.DFT*shift(t,{1/(12.5*3600):1}) # 12.5h period
+    self.current_set = to360(self.SET + (0 if self.current_drift>0 else 180))
+    self.current_drift = abs(self.current_drift)
 
     self.wind_dir_true, self.wind_speed_true = add_polar(
       (self.current_set, self.current_drift),
