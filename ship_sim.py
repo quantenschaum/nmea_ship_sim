@@ -64,6 +64,7 @@ def loop(config, **kwargs):
 
   def nmea():
     sentences = own.nmea()
+    # return sentences
     t = monotonic()
     for s in ships[1:]:
       if s.ais_class == "A":
@@ -174,8 +175,8 @@ class Ship:
       return sum(a*sin(2*pi*f*t) for f,a in coeff.items())
 
     t = TIME_FACTOR*(monotonic()-self.t0)
-    self.wind_dir_ground = to360(self.GWD+shift(t,{1/600:10,1/333:6,1/123:3}))
-    self.wind_speed_ground = self.GWS+shift(t,{1/66:1,1/222:1.5,1/674:2})
+    # self.wind_dir_ground = to360(self.GWD+shift(t,{1/600:10,1/333:6,1/123:3}))
+    # self.wind_speed_ground = self.GWS+shift(t,{1/66:1,1/222:1.5,1/674:2})
 
     self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
 
