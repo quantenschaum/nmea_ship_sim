@@ -44,7 +44,7 @@ CONFIG = [
     },
     {
         "name": AIS_INTERVAL,
-        "description": "AIS data send interval (s)",
+        "description": "AIS data send interval (s),0=AIS disabled",
         "type": "FLOAT",
         "default": 10,
     },
@@ -68,7 +68,7 @@ CONFIG = [
     },
     {
         "name": AP_MODE,
-        "description": "autopilot mode: 0=off 1=HDT->BRG 2=HDT->opt. VMC course",
+        "description": "autopilot mode: 0=off 1=COG->BRG 2=HDT->BRG 3=steer to opt. VMC",
         "type": "NUMBER",
         "default": 1,
     },

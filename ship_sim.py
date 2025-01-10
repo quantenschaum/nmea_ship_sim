@@ -21,7 +21,7 @@ TIME_FACTOR = 1  # speedup time
 SEND_INTERVAL = 1  # interval for sending NMEA data
 AIS_INTERVAL = 10  # interval (s) for emitting AIS sentences
 NOISE_FACTOR = 1  # scale measurement noise
-AUTO_PILOT = 2  # enable autopilot, set to 2 to steer to optimal VMC
+AUTO_PILOT = 1  # enable autopilot, set to 2 to steer to optimal VMC
 POS_JSON = "ship_pos.json"  # store position and heading in this file
 # NMEA sentences with are sent to clients
 NMEA_FILTER = "RMC,VHW,DBT,MWV,XDR"
@@ -42,10 +42,11 @@ def main():
 
 
 def loop(config, **kwargs):
-  global TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER, print
+  global TIME_FACTOR, SEND_INTERVAL, AIS_INTERVAL, NOISE_FACTOR, NMEA_FILTER, AUTO_PILOT, print
   TIME_FACTOR = kwargs.get("time_factor", TIME_FACTOR)
   SEND_INTERVAL = kwargs.get("send_interval", SEND_INTERVAL)
   AIS_INTERVAL = kwargs.get("ais_interval", AIS_INTERVAL)
+  AUTO_PILOT = kwargs.get("AP_mode", AUTO_PILOT)
   NOISE_FACTOR = kwargs.get("noise_factor", NOISE_FACTOR)
   NMEA_FILTER = kwargs.get("nmea_filter", NMEA_FILTER).replace("$", "").split(",")
   stop = kwargs.get("stop", lambda: False)
@@ -64,7 +65,7 @@ def loop(config, **kwargs):
 
   def nmea():
     sentences = own.nmea()
-    # return sentences
+    if not AIS_INTERVAL: return sentences
     t = monotonic()
     for s in ships[1:]:
       if s.ais_class == "A":
@@ -138,7 +139,6 @@ class Ship:
     self.SET=self.current_set
     self.DFT=self.current_drift
     self.time = datetime.utcnow()
-    self.sign = 0  # used by autopilot
     self.ais_time_dynamic = 0  # used for tracking AIS interval
     self.ais_time_static = 0  # for static data
     self.update(0)
@@ -175,8 +175,8 @@ class Ship:
       return sum(a*sin(2*pi*f*t) for f,a in coeff.items())
 
     t = TIME_FACTOR*(monotonic()-self.t0)
-    # self.wind_dir_ground = to360(self.GWD+shift(t,{1/600:10,1/333:6,1/123:3}))
-    # self.wind_speed_ground = self.GWS+shift(t,{1/66:1,1/222:1.5,1/674:2})
+    self.wind_dir_ground = to360(self.GWD+shift(t,{1/600:10,1/333:6,1/123:3}))
+    self.wind_speed_ground = self.GWS+shift(t,{1/66:1,1/222:1.5,1/674:2})
 
     self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
 
@@ -313,21 +313,24 @@ class Ship:
     return "".join(f"{s}\n" for s in sentences)
 
   def autopilot(self, data):
+    if not AUTO_PILOT: return
     # receive waypoint to steer to
     nmea = decode_nmea(data)
-    if not nmea:
-      return
+    if not nmea: return
     brg, xte = nmea
     cts = brg  # course to steer
+    steer_cog = AUTO_PILOT==1
     brg_twd = to180(brg - self.wind_dir_true)  # BRG from TWD
     msg = ""
+    if not hasattr(self,'sign'): self.sign=0
+    if not hasattr(self,'max_xte'): self.max_xte=1
     if self.sailing:
-      max_xte = 1
-      big_xte = abs(xte) > max_xte
-      if AUTO_PILOT == 2 and 15 < abs(brg_twd) < 170 and not big_xte:
+      big_xte = abs(xte) > self.max_xte
+      if AUTO_PILOT == 3 and 15 < abs(brg_twd) < 170 and not big_xte:
         cts = self._polar.vmc_angle(self.wind_dir_true, self.wind_speed_true, brg)
         self.sign = 0
         msg = "OPTVMC"
+        steer_cog = False
       else:
         min_twa = self._polar.angle(self.wind_speed_true, True)
         max_twa = self._polar.angle(self.wind_speed_true, False)
@@ -336,21 +339,25 @@ class Ship:
             self.sign = copysign(1, xte if big_xte else brg_twd)
           cts = to360(self.wind_dir_true + self.sign * min_twa)
           msg = "upwind layline"
+          steer_cog = False
         elif abs(brg_twd) > max_twa:  # too low downwind
           if not self.sign or big_xte:
             self.sign = copysign(1, -xte if big_xte else brg_twd)
           cts = to360(self.wind_dir_true + self.sign * max_twa)
           msg = "downwind layline"
+          steer_cog = False
         else:
           self.sign = 0
-    crs = self.heading_true  # if s.sign or hdt_cog > 60 else s.cog
-    cer = to180(cts - crs)  # course error
+
+    crs = self.course_over_ground if steer_cog else self.heading_true
+    err = to180(cts - crs)  # course error
+
     if TIME_FACTOR > 2:
       self.rudder_angle = 0
-      self.heading_true = to360(self.heading_true + cer)
+      self.heading_true = to360(self.heading_true + err)
     else:
-      self.rudder_angle = round(copysign(min(10, 0.2 * abs(cer)), cer))
-      print("CTS", cts, "XTE", xte, "CER", cer, "RUD", self.rudder_angle, msg)
+      self.rudder_angle = round(copysign(min(10, 0.2 * abs(err)), err))
+      print("CTS", cts, "XTE", xte, "ERR", err, "RUD", self.rudder_angle, msg)
 
 
 class Polar:
