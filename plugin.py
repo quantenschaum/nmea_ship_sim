@@ -206,8 +206,8 @@ class Plugin(object):
                                 # print(m.groups(), hms)
                                 t1 = datetime.time(
                                     hms[0],
-                                    hms[1],
-                                    hms[2],
+                                    hms[1]%60,
+                                    hms[2]%60,
                                     hms[3] * 1000 if len(hms) > 3 else 0,
                                 )
                                 dt = (
