@@ -206,15 +206,13 @@ class Plugin(object):
                                 # print(m.groups(), hms)
                                 t1 = datetime.time(
                                     hms[0],
-                                    hms[1]%60,
-                                    hms[2]%60,
+                                    min(hms[1],59),
+                                    min(hms[2],59),
                                     hms[3] * 1000 if len(hms) > 3 else 0,
                                 )
                                 dt = (
-                                    datetime.datetime.combine(datetime.date.today(), t1)
-                                    - datetime.datetime.combine(
-                                        datetime.date.today(), t0
-                                    )
+                                      datetime.datetime.combine(datetime.date.today(), t1)
+                                    - datetime.datetime.combine(datetime.date.today(), t0)
                                     if t0
                                     else datetime.timedelta()
                                 )
