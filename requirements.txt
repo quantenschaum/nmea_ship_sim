@@ -1,0 +1,5 @@
+attrs==25.3.0
+bitarray==3.4.2
+numpy==2.2.6
+pyais==2.9.4
+scipy==1.15.3

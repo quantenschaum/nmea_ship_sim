@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-import builtins
+
 import json
 import re
 import select
 import socket
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import sin, cos, radians, degrees, atan2, sqrt, copysign, isfinite, asin, nan, pi
 from os.path import isfile
 from random import gauss
 from time import monotonic
 from time import sleep
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+try:
+  from rich import print
+  from rich_argparse import ArgumentDefaultsRichHelpFormatter as ArgumentDefaultsHelpFormatter
+except: pass
 
 # pip install numpy scipy pyais
 import numpy
@@ -27,18 +32,6 @@ POS_JSON = "ship_pos.json"  # store position and heading in this file
 NMEA_FILTER = "RMC,VHW,DBT,MWV,XDR"
 
 start = monotonic()
-
-print = builtins.print
-
-
-def main():
-  config = read("ship_sim.json")
-  kwargs = {}
-
-  tcp_port = config.get("tcp_port", 6000)
-  kwargs["server"] = Server("", tcp_port).serve
-
-  loop(config, **kwargs)
 
 
 def loop(config, **kwargs):
@@ -104,6 +97,8 @@ def loop(config, **kwargs):
       t0 = t1
     sleep(1 / TIME_FACTOR)
 
+def now():
+  return datetime.now(timezone.utc)
 
 class Ship:
   props = {
@@ -138,7 +133,7 @@ class Ship:
     self.GWS=self.wind_speed_ground
     self.SET=self.current_set
     self.DFT=self.current_drift
-    self.time = datetime.utcnow()
+    self.time = now()
     self.ais_time_dynamic = 0  # used for tracking AIS interval
     self.ais_time_static = 0  # for static data
     self.update(0)
@@ -156,7 +151,7 @@ class Ship:
     "update state, simple forward integration of motion to new position"
     self.time = self.time + timedelta(seconds=delta_t)
     if TIME_FACTOR == 1:
-      self.time = datetime.utcnow()
+      self.time = now()
 
     if isfinite(self.rudder_angle):
       # rudder angle causes rate of turn, but proportional to speed
@@ -328,9 +323,9 @@ class Ship:
       big_xte = abs(xte) > self.max_xte
       if AUTO_PILOT == 3 and 15 < abs(brg_twd) < 170 and not big_xte:
         cts = self._polar.vmc_angle(self.wind_dir_true, self.wind_speed_true, brg)
+        steer_cog = False
         self.sign = 0
         msg = "OPTVMC"
-        steer_cog = False
       else:
         min_twa = self._polar.angle(self.wind_speed_true, True)
         max_twa = self._polar.angle(self.wind_speed_true, False)
@@ -338,23 +333,23 @@ class Ship:
           if not self.sign or big_xte:
             self.sign = copysign(1, xte if big_xte else brg_twd)
           cts = to360(self.wind_dir_true + self.sign * min_twa)
-          msg = "upwind layline"
           steer_cog = False
+          msg = "upwind layline"
         elif abs(brg_twd) > max_twa:  # too low downwind
           if not self.sign or big_xte:
             self.sign = copysign(1, -xte if big_xte else brg_twd)
           cts = to360(self.wind_dir_true + self.sign * max_twa)
-          msg = "downwind layline"
           steer_cog = False
+          msg = "downwind layline"
         else:
           self.sign = 0
 
     crs = self.course_over_ground if steer_cog else self.heading_true
     err = to180(cts - crs)  # course error
 
-    if TIME_FACTOR > 2:
+    if TIME_FACTOR > 1:
       self.rudder_angle = 0
-      self.heading_true = to360(self.heading_true + err)
+      self.heading_true = to360(self.heading_true + err/2)
     else:
       self.rudder_angle = round(copysign(min(10, 0.2 * abs(err)), err))
       print("CTS", cts, "XTE", xte, "ERR", err, "RUD", self.rudder_angle, msg)
@@ -378,7 +373,7 @@ class Polar:
       self.spline = scipy.interpolate.RectBivariateSpline(
         self.data["TWA"], self.data["TWS"], self.data[val]
       )
-    return max(0.0, float(self.spline(abs(twa), tws)))
+    return max(0.0, float(self.spline(abs(twa), tws)[0,0]))
 
   def vmc_angle(self, twd, tws, brg, s=1):
     brg_twd = to180(brg - twd)  # BRG from wind
@@ -630,4 +625,28 @@ def ais_21(data):
 
 
 if __name__ == "__main__":
-  main()
+  parser = ArgumentParser(description='NMEA ship data simulator with AIS', formatter_class=ArgumentDefaultsHelpFormatter)
+  parser.add_argument('-c','--config',help='config file',default='ship_sim.json')
+  parser.add_argument('-a','--addr',help='TCP server address',default='')
+  parser.add_argument('-p','--port',help='port',default=6000,type=int)
+  parser.add_argument('-t','--time',help='time factor',default=TIME_FACTOR,type=float)
+  parser.add_argument('-i','--interval',help='NMEA send interval',default=SEND_INTERVAL,type=float)
+  parser.add_argument('-I','--ais-interval',help='AIS send interval',default=AIS_INTERVAL,type=float)
+  parser.add_argument('-n','--noise',help='noise factor',default=NOISE_FACTOR,type=float)
+  parser.add_argument('-A','--auto-pilot',help='auto pilot mode',default=AUTO_PILOT,type=int)
+  parser.add_argument('-f','--filter',help='NMEA filter',default=NMEA_FILTER)
+  args=parser.parse_args()
+
+  TIME_FACTOR=args.time
+  SEND_INTERVAL=args.interval
+  AIS_INTERVAL=args.ais_interval
+  NOISE_FACTOR=args.noise
+  AUTO_PILOT=args.auto_pilot
+  NMEA_FILTER=args.filter
+
+  config = read(args.config)
+  kwargs = {}
+
+  kwargs["server"] = Server(args.addr, args.port).serve
+
+  loop(config, **kwargs)
