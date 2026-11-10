@@ -29,7 +29,7 @@ NOISE_FACTOR = 1  # scale measurement noise
 AUTO_PILOT = 1  # enable autopilot, set to 2 to steer to optimal VMC
 POS_JSON = "ship_pos.json"  # store position and heading in this file
 # NMEA sentences with are sent to clients
-NMEA_FILTER = "RMC,VHW,DBT,MWV,XDR"
+NMEA_FILTER = "RMC,VHW,DPT,MWV,XDR,VDM"
 
 start = monotonic()
 
@@ -124,16 +124,18 @@ class Ship:
     "destination": "",
     "ais_class": "A",
     "ais_navstat": 0,
+    "mod_wind":0,
+    "mod_current":0
   }
 
   def __init__(self, **kwargs):
     self.load(kwargs)
-    self.t0=monotonic()
+    self.time = now()
+    self.t0=self.time
     self.GWD=self.wind_dir_ground
     self.GWS=self.wind_speed_ground
     self.SET=self.current_set
     self.DFT=self.current_drift
-    self.time = now()
     self.ais_time_dynamic = 0  # used for tracking AIS interval
     self.ais_time_static = 0  # for static data
     self.update(0)
@@ -167,17 +169,26 @@ class Ship:
 
 
     def shift(t,coeff={}):
-      return sum(a*sin(2*pi*f*t) for f,a in coeff.items())
+      return sum(a*sin(2*pi*t/T) for T,a in coeff.items())
 
-    t = TIME_FACTOR*(monotonic()-self.t0)
-    self.wind_dir_ground = to360(self.GWD+shift(t,{1/600:10,1/333:6,1/123:3}))
-    self.wind_speed_ground = self.GWS+shift(t,{1/66:1,1/222:1.5,1/674:2})
+    t = (self.time-self.t0).total_seconds()
 
-    self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
+    if self.mod_wind: # modulate wind
+      self.wind_dir_ground = to360(self.GWD+shift(t,{3600:20,333:10,123:5}))
+      self.wind_speed_ground = max(0,self.GWS+shift(t,{66:1,222:2,2000:5}))
+      self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
+    else:
+      self.wind_dir_ground = self.GWD
+      self.wind_speed_ground = self.GWS
+      self.wind_angle_ground = to180(self.wind_dir_ground - self.heading_true)
 
-    self.current_drift = self.DFT*shift(t,{1/(12.5*3600):1}) # 12.5h period
-    self.current_set = to360(self.SET+shift(t,{1/(12.5*3600):20}) + (0 if self.current_drift>0 else 180))
-    self.current_drift = abs(self.current_drift)
+    if self.mod_current: # modulate current
+      self.current_drift = self.DFT*shift(t,{(1*3600):1})
+      self.current_set = to360(self.SET+shift(t,{(1*1500):20}) + (0 if self.current_drift>0 else 180))
+      self.current_drift = abs(self.current_drift)
+    else:
+      self.current_drift = self.DFT
+      self.current_set = self.SET
 
     self.wind_dir_true, self.wind_speed_true = add_polar(
       (self.current_set, self.current_drift),
@@ -280,15 +291,16 @@ class Ship:
     wind_angle_app = to180(noisy(to360(self.wind_angle_app), absolute=1))
 
     sentences = [
-      f"GPRMC,{hhmmssss},A,{latdeg:02.0f}{latmin:06.3f},{latsgn},{londeg:03.0f}{lonmin:06.3f},{lonsgn},{sog:05.1f},{cog:05.1f},{ddmmyy},{abs(magvar):.1f},{magvardir}",
-      f"GPGGA,{hhmmssss},{latdeg:02.0f}{latmin:05.2f},{latsgn},{londeg:03.0f}{lonmin:05.2f},{lonsgn},{fix_quality},{sats:02d},{hdop:03.1f},{altitude:.1f},M,{0:.1f},M,,",
-      f"GPZDA,{hhmmssss},{t.day:02d},{t.month:02d},{t.year:04d},{1:02d},{0:02d}",
-      f"GPGLL,{latdeg:02.0f}{latmin:07.04f},{latsgn},{londeg:03.0f}{lonmin:07.04f},{lonsgn},{hhmmssss},A",
-      f"GPVTG,{cog:.1f},T,,,{sog:.1f},N,,",
+      f"GSRMC,{hhmmssss},A,{latdeg:02.0f}{latmin:06.3f},{latsgn},{londeg:03.0f}{lonmin:06.3f},{lonsgn},{sog:05.1f},{cog:05.1f},{ddmmyy},,",
+      f"GSGGA,{hhmmssss},{latdeg:02.0f}{latmin:05.2f},{latsgn},{londeg:03.0f}{lonmin:05.2f},{lonsgn},{fix_quality},{sats:02d},{hdop:03.1f},{altitude:.1f},M,{0:.1f},M,,",
+      f"GSZDA,{hhmmssss},{t.day:02d},{t.month:02d},{t.year:04d},{1:02d},{0:02d}",
+      f"GSGLL,{latdeg:02.0f}{latmin:07.04f},{latsgn},{londeg:03.0f}{lonmin:07.04f},{lonsgn},{hhmmssss},A",
+      f"GSVTG,{cog:.1f},T,,,{sog:.1f},N,,",
       f"HCHDG,{heading_cmp:.1f},{abs(magdev):.1f},{magdevdir},{abs(magvar):.1f},{magvardir}",
       f"HCHDM,{heading_mag:.1f},M",
       f"HCHDT,{heading:.1f},T",
       f"VWVHW,{heading:.1f},T,{heading_mag:.1f},M,{stw:.1f},N,,",
+      f"SDDPT,{depth:.1f},,,",  # below transducer
       f"SDDBT,,,{depth:.1f},M,,",  # below transducer
       f"SDDBS,,,{depth:.1f},M,,",  # below surface
       # f"WIMWD,{wind_dir_true:.1f},T,,,{wind_speed_true:.1f},N,,",
@@ -298,12 +310,19 @@ class Ship:
       f"RIRSA,{self.rudder_angle:.1f},A,,",
       f"ERRPM,E,1,{noisy(self.engine_rpm):.1f},,A",
       f"CCVDR,{self.current_set:.1f},T,,,{self.current_drift:.1f},N",
-      f"HCXDR,A,{self.heel_angle:.0f},D,ROLL"
+      f"HCXDR,A,{self.heel_angle:.0f},D,ROLL",
+      f"APXDR,A,{self.rudder_angle:.0f},D,RUDDER",
+      # f"GNGSA,A,3,04,06,07,09,11,16,20,30,,,,,0.98,1.49,0.85,1",
+      # 'GPGSV,3,1,11,11,26,049,46,12,27,095,45,18,10,180,36,20,10,076,40,1',
+      # 'GPGSV,3,2,09,26,13,289,40,28,57,283,45,29,78,222,46,31,36,307,44,6',
     ]
+
 
     sentences = [
       f"${s}*{nmea_crc(s):02X}" for s in sentences if s[2:5] in NMEA_FILTER
     ]
+
+    # sentences = list(filter(lambda s:all(x not in s for x in 'RMC GGA GLL'.split()), sentences))
 
     return "".join(f"{s}\n" for s in sentences)
 
@@ -494,9 +513,9 @@ def project(point, bearing, distance):
   return [to180(degrees(a)) for a in (lat2, lon2)]
 
 
-def nmea_crc(senctence):
+def nmea_crc(sentence):
   crc = 0
-  for c in senctence:
+  for c in sentence:
     crc = crc ^ ord(c)
   return crc & 0xFF
 
@@ -557,7 +576,7 @@ def deg(d, m=0, s=0):
 
 
 def ais_encode(**kwargs):
-  return pyais.encode_dict(kwargs, talker_id="AIVDM")
+  return pyais.encode_dict(kwargs, talker_id="AI")
 
 
 def ais_1(s):

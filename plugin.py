@@ -52,7 +52,7 @@ CONFIG = [
         "name": NMEA_FILTER,
         "description": "NMEA filter, sentences to send",
         "type": "STRING",
-        "default": "$RMC,$VHW,$DBT,$MWV,$XDR",
+        "default": "RMC,VHW,DPT,MWV,XDR,VDM",
     },
     {
         "name": NMEA_PRIORITY,
@@ -97,12 +97,10 @@ class Plugin(object):
             return fn
 
         fn = os.path.join(self.api.getDataDir(), "user", "viewer", filename)
-        if not os.path.isfile(fn):
-            source = os.path.join(os.path.dirname(__file__), filename)
-            if os.path.isfile(source):
-                shutil.copyfile(source, fn)
+        if os.path.isfile(fn):
+            return fn
 
-        return fn
+        raise Exception(f'{filename} not found')
 
     def __init__(self, api: AVNApi):
         self.api = api
@@ -158,7 +156,7 @@ class Plugin(object):
     def run(self):
         self.api.log("started")
         self.read_config()
-        self.api.setStatus("STARTED", "running")
+        self.api.setStatus("STARTED", "starting")
 
         simconf = ship_sim.read(self.simconf_file)
 
@@ -180,8 +178,10 @@ class Plugin(object):
 
         def serve(data, recv):
             rmb = self.get_rmb()
+            # print(rmb)
             if rmb:
                 recv(rmb)
+            # print(data)
             send_nmea(data.splitlines())
 
         def replay_nmea():
@@ -230,6 +230,7 @@ class Plugin(object):
             try:
                 self.config_changed = False
                 if self.config[REPLAY_FILE]:
+                    self.api.setStatus("STARTED", f"replaying {self.config[REPLAY_FILE]}")
                     replay_nmea()
                 else:
                     t0, r = monotonic(), self.config[RESTART] / self.config[TIME_FACTOR]
@@ -245,12 +246,13 @@ class Plugin(object):
                         )
                     }
                     kwargs["server"] = serve
-                    kwargs["print"] = False
+                    kwargs["print"] =   False
                     kwargs["stop"] = (
                         lambda: self.api.shouldStopMainThread()
                         or self.config_changed
                         or (r and monotonic() - t0 > r)
                     )
+                    self.api.setStatus("STARTED", f"starting loop with {kwargs} {simconf}")
                     ship_sim.loop(simconf, **kwargs)
             except Exception as x:
                 print(x)

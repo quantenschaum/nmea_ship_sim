@@ -1,0 +1,13 @@
+[project]
+name = "nmea-ship-sim"
+version = "0.1.0"
+description = "NMEA data simulator with avnav plugin"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "attrs>=26.1.0",
+    "bitarray>=3.12.3",
+    "numpy>=2.4.6",
+    "pyais>=3.3.1",
+    "scipy>=1.17.1",
+]
