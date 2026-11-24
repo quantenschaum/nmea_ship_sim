@@ -574,9 +574,12 @@ def clamp(x, limits):
 def deg(d, m=0, s=0):
   return d + m / 60 + s / 3600
 
+seq=0
 
 def ais_encode(**kwargs):
-  return pyais.encode_dict(kwargs, talker_id="AI")
+  global seq
+  seq=(seq+1)%10
+  return pyais.encode_dict(kwargs, talker_id="AI",sentence_type='VDM',seq_id=seq)
 
 
 def ais_1(s):

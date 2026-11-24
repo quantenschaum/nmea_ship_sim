@@ -1,16 +1,13 @@
 import datetime
 import os
 import re
-import shutil
 import sys
 import time
-from time import monotonic
+from time import monotonic, sleep
 
 from avnav_api import AVNApi
 
 sys.path.insert(0, os.path.dirname(__file__))
-
-import ship_sim
 
 SOURCE = "simulator"
 TIME_FACTOR = "time_factor"
@@ -21,7 +18,6 @@ NMEA_FILTER = "nmea_filter"
 RESTART = "restart_time"
 AP_MODE = "AP_mode"
 REPLAY_FILE = "replay_file"
-
 NMEA_PRIORITY = "nmea_priority"
 CONFIG = [
     {
@@ -82,7 +78,6 @@ CONFIG = [
 
 
 class Plugin(object):
-
     @classmethod
     def pluginInfo(cls):
         return {
@@ -100,7 +95,7 @@ class Plugin(object):
         if os.path.isfile(fn):
             return fn
 
-        raise Exception(f'{filename} not found')
+        raise Exception(f"{filename} not found")
 
     def __init__(self, api: AVNApi):
         self.api = api
@@ -154,9 +149,12 @@ class Plugin(object):
         return data[-1].strip() if data else None
 
     def run(self):
+        import ship_sim
+
         self.api.log("started")
         self.read_config()
         self.api.setStatus("STARTED", "starting")
+        # self.api.registerSettingsFile('sim sim data',"ship_sim.json")
 
         simconf = ship_sim.read(self.simconf_file)
 
@@ -186,7 +184,7 @@ class Plugin(object):
 
         def replay_nmea():
             nmea_filter = self.config[NMEA_FILTER].strip().replace("$", "").split(",")
-            nmea_filter = list(filter(lambda e:e,nmea_filter))
+            nmea_filter = list(filter(lambda e: e, nmea_filter))
             replay = self.get_file(self.config[REPLAY_FILE])
             lines = []
             with open(replay) as f:
@@ -206,13 +204,15 @@ class Plugin(object):
                                 # print(m.groups(), hms)
                                 t1 = datetime.time(
                                     hms[0],
-                                    min(hms[1],59),
-                                    min(hms[2],59),
+                                    min(hms[1], 59),
+                                    min(hms[2], 59),
                                     hms[3] * 1000 if len(hms) > 3 else 0,
                                 )
                                 dt = (
-                                      datetime.datetime.combine(datetime.date.today(), t1)
-                                    - datetime.datetime.combine(datetime.date.today(), t0)
+                                    datetime.datetime.combine(datetime.date.today(), t1)
+                                    - datetime.datetime.combine(
+                                        datetime.date.today(), t0
+                                    )
                                     if t0
                                     else datetime.timedelta()
                                 )
@@ -230,7 +230,9 @@ class Plugin(object):
             try:
                 self.config_changed = False
                 if self.config[REPLAY_FILE]:
-                    self.api.setStatus("STARTED", f"replaying {self.config[REPLAY_FILE]}")
+                    self.api.setStatus(
+                        "STARTED", f"replaying {self.config[REPLAY_FILE]}"
+                    )
                     replay_nmea()
                 else:
                     t0, r = monotonic(), self.config[RESTART] / self.config[TIME_FACTOR]
@@ -246,15 +248,18 @@ class Plugin(object):
                         )
                     }
                     kwargs["server"] = serve
-                    kwargs["print"] =   False
-                    kwargs["stop"] = (
-                        lambda: self.api.shouldStopMainThread()
+                    kwargs["print"] = False
+                    kwargs["stop"] = lambda: (
+                        self.api.shouldStopMainThread()
                         or self.config_changed
                         or (r and monotonic() - t0 > r)
                     )
-                    self.api.setStatus("STARTED", f"starting loop with {kwargs} {simconf}")
+                    self.api.setStatus(
+                        "STARTED", f"starting loop with {kwargs} {simconf}"
+                    )
                     ship_sim.loop(simconf, **kwargs)
+
             except Exception as x:
-                print(x)
-                time.sleep(1)
+                self.api.error(f"{x}")
                 self.api.setStatus("ERROR", f"{x}")
+                sleep(10)
